@@ -2,12 +2,14 @@
 import argparse
 import glob
 import multiprocessing as mp
+import numpy as np
 import os
 import time
 import cv2
 import tqdm
 
 from detectron2.data.detection_utils import read_image
+from detectron2.structures import Boxes
 from detectron2.utils.logger import setup_logger
 
 from predictor import VisualizationDemo
@@ -80,6 +82,18 @@ def get_parser():
     )
     return parser
 
+def process_image(img, boxes, output_img_path, output_mask_path):
+    img = img.astype(np.uint8)
+    mask = np.zeros_like(img)
+    output_img = img.copy()
+
+    for box in boxes.tensor:
+        x1, y1, x2, y2 = box.int().tolist()
+        output_img[y1:y2, x1:x2] = 255
+        mask[y1:y2, x1:x2] = 255
+
+    cv2.imwrite(output_img_path, output_img)
+    cv2.imwrite(output_mask_path, mask)
 
 if __name__ == "__main__":
     mp.set_start_method("spawn", force=True)
@@ -129,6 +143,17 @@ if __name__ == "__main__":
 
                     # create cropped images
                     boxes = predictions["instances"].pred_boxes
+                    prefix = os.path.splitext(os.path.basename(path))[0]
+                    incomplete_basename = f'{prefix}_incomplete.jpg'
+                    incomplete_filename = os.path.join(args.output, incomplete_basename)
+                    mask_basename = f'{prefix}_mask.jpg'
+                    mask_filename = os.path.join(args.output, mask_basename)
+
+                    try:
+                      process_image(img, boxes, incomplete_filename, mask_filename)
+                    except Exception as e:
+                      print(f'Exception due to {e}')
+
                     for idx, box in enumerate(boxes):
                       logger.info(f'{idx}, {box}')
                       box = box.tolist()
